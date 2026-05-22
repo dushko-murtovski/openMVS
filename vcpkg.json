@@ -76,13 +76,7 @@
     "cuda": {
       "description": "CUDA support for OpenMVS",
       "dependencies": [
-        "cuda",
-        {
-          "name": "siftgpu",
-          "features": [
-            "cuda"
-          ]
-        }
+        "cuda"
       ]
     },
     "python": {
