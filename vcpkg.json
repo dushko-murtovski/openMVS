@@ -77,12 +77,6 @@
       "dependencies": [
         "cuda",
         {
-          "name": "ceres",
-          "features": [
-            "cuda"
-          ]
-        },
-        {
           "name": "siftgpu",
           "features": [
             "cuda"
