@@ -10,6 +10,10 @@
 #include "Track.h"
 #include "Triangulation.h"
 #include <PoseLib/poselib.h>
+#include <fstream>
+#include <iomanip>
+#include <cstdio>
+#include <vector>
 
 using namespace SFM;
 
@@ -17,6 +21,62 @@ using namespace SFM;
 
 
 // S T R U C T S ///////////////////////////////////////////////////
+
+namespace {
+
+// Atomically write a live snapshot of a just-registered image to <strLiveSceneDir>/live_frame_<id>.txt
+// so external viewers (e.g. DynamixMapper) can render keyframes as they are created.
+void WriteLiveFrameSnapshot(const Scene& scene, IIndex imageID)
+{
+	if (scene.strLiveSceneDir.empty())
+		return;
+	const Image& img = scene.images[imageID];
+	if (!img.IsValid())
+		return;
+	const KMatrix K = img.GetK();
+
+	char tmpPath[1024], donePath[1024];
+	std::snprintf(tmpPath,  sizeof(tmpPath),  "%slive_frame_%u.tmp", scene.strLiveSceneDir.c_str(), imageID);
+	std::snprintf(donePath, sizeof(donePath), "%slive_frame_%u.txt", scene.strLiveSceneDir.c_str(), imageID);
+
+	std::ofstream f(tmpPath, std::ios::out | std::ios::trunc);
+	if (!f.is_open())
+		return;
+	f << std::setprecision(17);
+	f << "id "    << imageID << '\n';
+	f << "size "  << img.GetWidth() << ' ' << img.GetHeight() << '\n';
+	f << "K "     << K(0,0) << ' ' << K(1,1) << ' ' << K(0,2) << ' ' << K(1,2) << '\n';
+	f << "R "     << img.R(0,0) << ' ' << img.R(0,1) << ' ' << img.R(0,2) << ' '
+	              << img.R(1,0) << ' ' << img.R(1,1) << ' ' << img.R(1,2) << ' '
+	              << img.R(2,0) << ' ' << img.R(2,1) << ' ' << img.R(2,2) << '\n';
+	f << "C "     << img.C.x << ' ' << img.C.y << ' ' << img.C.z << '\n';
+
+	std::vector<uint32_t> visible;
+	visible.reserve(256);
+	for (uint32_t tid = 0; tid < scene.tracks.size(); ++tid) {
+		const Track& tr = scene.tracks[tid];
+		if (!tr.IsInlier())
+			continue;
+		for (const Observation& obs : tr) {
+			if (obs.imageID == imageID) {
+				visible.push_back(tid);
+				break;
+			}
+		}
+	}
+	f << "points " << visible.size() << '\n';
+	const bool hasColors = (scene.colors.size() == scene.tracks.size());
+	for (uint32_t tid : visible) {
+		const Point3& X = scene.tracks[tid].position;
+		const Pixel8U c = hasColors ? scene.colors[tid] : Pixel8U(255, 255, 255);
+		f << tid << ' ' << X.x << ' ' << X.y << ' ' << X.z << ' '
+		  << (int)c.r << ' ' << (int)c.g << ' ' << (int)c.b << '\n';
+	}
+	f.close();
+	std::rename(tmpPath, donePath);
+}
+
+} // namespace
 
 Resection::Resection(Scene& _scene, const ResectionConfig& _config)
 	: scene(_scene), config(_config)
@@ -198,6 +258,7 @@ bool Resection::RegisterImages()
 				nextIDs.RemoveAtMove(n);
 				continue; // n now points to the shifted element, do not increment
 			}
+			WriteLiveFrameSnapshot(scene, nextID);
 			lastRegistered.push_back(nextID);
 			unregistered.erase(nextID);
 			++registeredCount;

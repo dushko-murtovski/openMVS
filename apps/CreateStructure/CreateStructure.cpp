@@ -79,6 +79,7 @@ unsigned nMaxThreads;
 int nArchiveType;
 int nProcessPriority;
 String strConfigFileName;
+String strLiveSceneDir;
 boost::program_options::variables_map vm;
 }
 
@@ -150,6 +151,7 @@ bool Application::Initialize(size_t argc, LPCTSTR* argv)
 		("extract-colors", boost::program_options::value<bool>(&OPT::bExtractColors)->default_value(false), "extract colors for reconstructed points")
 		("undistort-alpha", boost::program_options::value<float>(&OPT::undistortAlpha)->default_value(0.6f), "alpha parameter for undistortion (0=zoomed in, 1=all pixels retained)")
 		("align-gps-threshold", boost::program_options::value<float>(&OPT::thAlignGPS)->default_value(5.f), "maximum distance in meters for aligning GPS positions to reconstruction poses (0 = disabled)")
+		("live-scene-dir", boost::program_options::value<std::string>(&OPT::strLiveSceneDir)->default_value(""), "directory to write per-camera live snapshot files (live_frame_<id>.txt) during incremental SfM")
 		;
 
 	boost::program_options::options_description cmdline_options;
@@ -263,6 +265,9 @@ int main(int argc, LPCTSTR* argv)
 
 	// Run SfM reconstruction
 	Scene scene(OPT::nMaxThreads);
+	scene.strLiveSceneDir = OPT::strLiveSceneDir;
+	if (!scene.strLiveSceneDir.empty())
+		Util::ensureFolderSlash(scene.strLiveSceneDir);
 	if (!scene.Reconstruct(OPT::strSource, cfg)) {
 		if (!scene.status.nState.isSet(Scene::Status::STATE::CALIBRATED) &&
 			!(cfg.matchImagesOnly && scene.status.nState.isSet(Scene::Status::STATE::MATCHED))) {

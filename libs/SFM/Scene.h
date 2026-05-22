@@ -172,6 +172,8 @@ public:
 	unsigned nMaxThreads; // maximum number of threads used to distribute the work load (always >0, default = hardware concurrency)
 	BS::light_thread_pool threadPool; // thread pool for parallel processing
 
+	String strLiveSceneDir; // when non-empty, Resection writes live_frame_<id>.txt per registered image
+
 public:
 	Scene(unsigned _nMaxThreads=0);
 	Scene(const Scene& scene);
