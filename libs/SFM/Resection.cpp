@@ -57,7 +57,10 @@ void WriteLiveFrameSnapshot(const Scene& scene, IIndex imageID)
 		const Track& tr = scene.tracks[tid];
 		if (!tr.IsInlier())
 			continue;
-		for (const Observation& obs : tr) {
+		// Range-for on Track iterates only the inlier prefix; the just-registered
+		// image's observations are still candidates (not yet retriangulated), so
+		// scan the full observations array to include them in the live snapshot.
+		for (const Observation& obs : tr.observations) {
 			if (obs.imageID == imageID) {
 				visible.push_back(tid);
 				break;

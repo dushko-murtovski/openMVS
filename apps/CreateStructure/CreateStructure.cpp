@@ -266,8 +266,16 @@ int main(int argc, LPCTSTR* argv)
 	// Run SfM reconstruction
 	Scene scene(OPT::nMaxThreads);
 	scene.strLiveSceneDir = OPT::strLiveSceneDir;
-	if (!scene.strLiveSceneDir.empty())
+	if (!scene.strLiveSceneDir.empty()) {
 		Util::ensureFolderSlash(scene.strLiveSceneDir);
+		Util::ensureFolder(scene.strLiveSceneDir);
+		// Clear stale snapshots from previous runs so viewers don't see leftover frames
+		File::FileInfoArr staleFiles;
+		File::findFiles(scene.strLiveSceneDir, _T("live_frame_*.txt"), false, staleFiles);
+		File::findFiles(scene.strLiveSceneDir, _T("live_frame_*.tmp"), false, staleFiles);
+		for (const File::FILEINFO& fi : staleFiles)
+			File::deleteFile(fi.path.c_str());
+	}
 	if (!scene.Reconstruct(OPT::strSource, cfg)) {
 		if (!scene.status.nState.isSet(Scene::Status::STATE::CALIBRATED) &&
 			!(cfg.matchImagesOnly && scene.status.nState.isSet(Scene::Status::STATE::MATCHED))) {

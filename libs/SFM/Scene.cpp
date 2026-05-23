@@ -84,6 +84,7 @@ Scene& Scene::operator=(const Scene& scene) {
 	transform = scene.transform;
 	obb = scene.obb;
 	status = scene.status;
+	strLiveSceneDir = scene.strLiveSceneDir;
 	return *this;
 }
 
@@ -99,6 +100,7 @@ Scene& Scene::operator=(Scene&& scene) noexcept {
 	transform = scene.transform;
 	obb = scene.obb;
 	status = scene.status;
+	strLiveSceneDir = std::move(scene.strLiveSceneDir);
 	return *this;
 }
 
