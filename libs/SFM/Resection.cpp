@@ -10,8 +10,10 @@
 #include "Track.h"
 #include "Triangulation.h"
 #include <PoseLib/poselib.h>
+#include <atomic>
 #include <fstream>
 #include <iomanip>
+#include <sstream>
 #include <cstdio>
 #include <vector>
 
@@ -24,24 +26,22 @@ using namespace SFM;
 
 namespace {
 
+std::atomic<LiveFrameListener> s_liveFrameListener(NULL);
+
 // Atomically write a live snapshot of a just-registered image to <strLiveSceneDir>/live_frame_<id>.txt
-// so external viewers (e.g. DynamixMapper) can render keyframes as they are created.
+// so external viewers (e.g. DynamixMapper) can render keyframes as they are created; a host
+// process that set a live-frame listener receives the same text directly.
 void WriteLiveFrameSnapshot(const Scene& scene, IIndex imageID)
 {
-	if (scene.strLiveSceneDir.empty())
+	const LiveFrameListener listener(s_liveFrameListener);
+	if (scene.strLiveSceneDir.empty() && listener == NULL)
 		return;
 	const Image& img = scene.images[imageID];
 	if (!img.IsValid())
 		return;
 	const KMatrix K = img.GetK();
 
-	char tmpPath[1024], donePath[1024];
-	std::snprintf(tmpPath,  sizeof(tmpPath),  "%slive_frame_%u.tmp", scene.strLiveSceneDir.c_str(), imageID);
-	std::snprintf(donePath, sizeof(donePath), "%slive_frame_%u.txt", scene.strLiveSceneDir.c_str(), imageID);
-
-	std::ofstream f(tmpPath, std::ios::out | std::ios::trunc);
-	if (!f.is_open())
-		return;
+	std::ostringstream f;
 	f << std::setprecision(17);
 	f << "id "    << imageID << '\n';
 	f << "size "  << img.GetWidth() << ' ' << img.GetHeight() << '\n';
@@ -75,11 +75,30 @@ void WriteLiveFrameSnapshot(const Scene& scene, IIndex imageID)
 		f << tid << ' ' << X.x << ' ' << X.y << ' ' << X.z << ' '
 		  << (int)c.r << ' ' << (int)c.g << ' ' << (int)c.b << '\n';
 	}
-	f.close();
+	const std::string snapshot(f.str());
+	if (listener != NULL)
+		listener(imageID, snapshot.c_str());
+	if (scene.strLiveSceneDir.empty())
+		return;
+
+	char tmpPath[1024], donePath[1024];
+	std::snprintf(tmpPath,  sizeof(tmpPath),  "%slive_frame_%u.tmp", scene.strLiveSceneDir.c_str(), imageID);
+	std::snprintf(donePath, sizeof(donePath), "%slive_frame_%u.txt", scene.strLiveSceneDir.c_str(), imageID);
+	{
+		std::ofstream file(tmpPath, std::ios::out | std::ios::trunc);
+		if (!file.is_open())
+			return;
+		file << snapshot;
+	}
 	std::rename(tmpPath, donePath);
 }
 
 } // namespace
+
+void SFM::SetLiveFrameListener(LiveFrameListener listener)
+{
+	s_liveFrameListener = listener;
+}
 
 Resection::Resection(Scene& _scene, const ResectionConfig& _config)
 	: scene(_scene), config(_config)

@@ -1256,6 +1256,8 @@ void DepthMapsData::MergeDepthMaps(PointCloud& pointcloud, bool bEstimateColor, 
 	Util::Progress progress(_T("Merged depth-maps"), arrDepthData.size());
 	GET_LOGCONSOLE().Pause();
 	FOREACH(idxImage, arrDepthData) {
+		if (Util::IsCancelRequested())
+			break;
 		TD_TIMER_STARTD();
 		DepthData& depthData = arrDepthData[idxImage];
 		ASSERT(depthData.GetView().GetLocalID(scene.images) == idxImage);
@@ -1416,6 +1418,8 @@ void DepthMapsData::FuseDepthMaps(PointCloud& pointcloud, bool bEstimateColor, b
 	unsigned totalNumImageNeighborsInCache = 0, totalNumImagesInCache = 0;
 	IIndex numDMapsFused = 0;
 	for (; numDMapsFused < arrDepthData.size(); ++numDMapsFused) {
+		if (Util::IsCancelRequested())
+			break;
 		TD_TIMER_STARTD();
 		// find the best depth-map to fuse next as the one with the most neighbors already in cache
 		const auto [idxImage, numImageNeighborsInCache, numImagesInCache] = FetchBestNextDMapIndex(arrDepthData, cacheDMaps, fusedDMaps);
@@ -1588,7 +1592,7 @@ void DepthMapsData::FuseDepthMaps(PointCloud& pointcloud, bool bEstimateColor, b
 		static_cast<double>(totalNumImageNeighborsInCache) / numDMapsFused,
 		static_cast<double>(totalNumImagesInCache) / numDMapsFused, TD_TIMER_GET_FMT().c_str());
 
-	if (bEstimateNormal && !pointcloud.points.empty() && pointcloud.normals.empty()) {
+	if (bEstimateNormal && !pointcloud.points.empty() && pointcloud.normals.empty() && !Util::IsCancelRequested()) {
 		// estimate normal also if requested (quite expensive if normal-maps not available)
 		TD_TIMER_STARTD();
 		pointcloud.normals.resize(pointcloud.points.size());
@@ -1749,7 +1753,7 @@ void DepthMapsData::DenseFuseDepthMaps(PointCloud& pointcloud, bool bEstimateCol
 	};
 	// loop over each depth-map
 	IIndex numDMapsFused = 0;
-	while (true) {
+	while (!Util::IsCancelRequested()) {
 		TD_TIMER_STARTD();
 		// find the best depth-map to fuse next as the one with the most neighbors already in cache
 		const auto [idxImage, numImageNeighborsInCache, numImagesInCache] = FetchBestNextDMapIndex(arrDepthData, cacheDMaps, fusedDMaps);
@@ -1930,6 +1934,12 @@ bool Scene::DenseReconstruction(int nFusionMode, bool bCrop2ROI, float fBorderRO
 		// dense fuse depth-maps
 		data.depthMaps.DenseFuseDepthMaps(pointcloud, OPTDENSE::nEstimateColors == 2, OPTDENSE::nEstimateNormals == 2);
 	}
+	if (Util::IsCancelRequested()) {
+		// the fusion stopped early on a host's request: the partial point-cloud is not a result
+		pointcloud.Release();
+		VERBOSE("Dense reconstruction canceled");
+		return false;
+	}
 	#if TD_VERBOSE != TD_VERBOSE_OFF
 	if (VERBOSITY_LEVEL > 2) {
 		// print number of points with 3+ views
@@ -2016,6 +2026,8 @@ bool Scene::ComputeDepthMaps(DenseDepthMapData& data)
 		#else
 		FOREACH(idxImage, images) {
 		#endif
+			if (Util::IsCancelRequested())
+				continue;
 			// skip invalid, uncalibrated or discarded images
 			Image& imageData = images[idxImage];
 			if (!imageData.IsValid()) {
@@ -2050,6 +2062,10 @@ bool Scene::ComputeDepthMaps(DenseDepthMapData& data)
 			DEBUG_ULTIMATE("K%d = \n%s", idxImage, cvMat2String(imageData.camera.K).c_str());
 			DEBUG_LEVEL(3, "R%d = \n%s", idxImage, cvMat2String(imageData.camera.R).c_str());
 			DEBUG_LEVEL(3, "C%d = \n%s", idxImage, cvMat2String(imageData.camera.C).c_str());
+		}
+		if (Util::IsCancelRequested()) {
+			VERBOSE("Dense reconstruction canceled");
+			return false;
 		}
 		#ifdef DENSE_USE_OPENMP
 		if (bAbort || data.images.IsEmpty()) {
@@ -2183,6 +2199,10 @@ bool Scene::ComputeDepthMaps(DenseDepthMapData& data)
 		data.nEstimationGeometricIter = -1;
 	}
 
+	// the filter workers below wait on each other through a barrier, so they are not stopped
+	// part-way: a cancel request is honored only before they start
+	if (Util::IsCancelRequested())
+		return false;
 	if ((OPTDENSE::nOptimize & (OPTDENSE::ADJUST_CONFIDENCE | OPTDENSE::ADJUST_CONFIDENCE_FAST)) != 0) {
 		// initialize the queue of depth-maps to be filtered
 		data.sem.Clear();
@@ -2225,6 +2245,12 @@ void Scene::DenseReconstructionEstimate(void* pData)
 	DenseDepthMapData& data = *((DenseDepthMapData*)pData);
 	while (true) {
 		CAutoPtr<Event> evt(data.events.GetEvent());
+		if (evt->GetID() == EVT_FAIL || Util::IsCancelRequested()) {
+			// stop, and pass the failure on to the other working threads and to the caller,
+			// which takes a non-empty queue for failure
+			data.events.AddEventFirst(new EVTFail);
+			return;
+		}
 		switch (evt->GetID()) {
 		case EVT_PROCESSIMAGE: {
 			const EVTProcessImage& evtImage = *((EVTProcessImage*)(Event*)evt);
@@ -2273,7 +2299,9 @@ void Scene::DenseReconstructionEstimate(void* pData)
 				if (OPTDENSE::nOptimize & OPTDENSE::OPTIMIZE) {
 					if (!depthData.Load(ComposeDepthFilePath(depthData.GetView().GetID(), "dmap"))) {
 						VERBOSE("error: invalid depth-map '%s'", ComposeDepthFilePath(depthData.GetView().GetID(), "dmap").c_str());
-						exit(EXIT_FAILURE);
+						// signal error and terminate (not exit(): the libraries may be hosted in-process)
+						data.events.AddEventFirst(new EVTFail);
+						return;
 					}
 					// optimize depth-map
 					data.events.AddEventFirst(new EVTOptimizeDepthMap(evtImage.idxImage));
@@ -2363,8 +2391,12 @@ void Scene::DenseReconstructionEstimate(void* pData)
 			#endif
 			// save compute depth-map for this image
 			if (!depthData.depthMap.empty() &&
-				!depthData.Save(ComposeDepthFilePath(depthData.GetView().GetID(), data.nEstimationGeometricIter < 0 ? "dmap" : "geo.dmap")))
-				exit(EXIT_FAILURE);
+				!depthData.Save(ComposeDepthFilePath(depthData.GetView().GetID(), data.nEstimationGeometricIter < 0 ? "dmap" : "geo.dmap"))) {
+				VERBOSE("error: cannot save depth-map '%s'", ComposeDepthFilePath(depthData.GetView().GetID(), data.nEstimationGeometricIter < 0 ? "dmap" : "geo.dmap").c_str());
+				// signal error and terminate
+				data.events.AddEventFirst(new EVTFail);
+				return;
+			}
 			depthData.ReleaseImages();
 			depthData.Release();
 			data.progress->operator++();
@@ -2481,8 +2513,12 @@ void Scene::DenseReconstructionFilter(void* pData)
 			}
 			#endif
 			// save filtered depth-map for this image
-			if (!depthData.Save(ComposeDepthFilePath(depthData.GetView().GetID(), "dmap")))
-				exit(EXIT_FAILURE);
+			if (!depthData.Save(ComposeDepthFilePath(depthData.GetView().GetID(), "dmap"))) {
+				VERBOSE("error: cannot save depth-map '%s'", ComposeDepthFilePath(depthData.GetView().GetID(), "dmap").c_str());
+				// signal error and terminate
+				data.events.AddEventFirst(new EVTFail);
+				return;
+			}
 			depthData.DecRef();
 			data.progress->operator++();
 			break; }

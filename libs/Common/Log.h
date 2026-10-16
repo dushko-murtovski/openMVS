@@ -52,7 +52,8 @@ public:
 
 public:
 	// log methods
-	void		Open() { m_arrRecordClbk = new ClbkRecordMsgArray; }
+	// opening an open log keeps its listeners, so a host process can listen before running an app's main()
+	void		Open() { if (m_arrRecordClbk == NULL) m_arrRecordClbk = new ClbkRecordMsgArray; }
 	void		Close() { m_arrRecordClbk = NULL; }
 	void		Join(Log& log) { m_arrRecordClbk = log.m_arrRecordClbk; }
 	void		RegisterListener(ClbkRecordMsg);

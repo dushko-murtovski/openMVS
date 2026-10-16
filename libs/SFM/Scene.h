@@ -384,6 +384,14 @@ public:
  * @return true if comparison succeeded (does not indicate quality)
  */
 SFM_API bool CompareScenes(const Scene& scene, const String& gtFile, bool matchByName = true);
+
+/**
+ * @brief Host hook: receives the live snapshot of each image as incremental SfM registers it
+ * (the text Resection writes to live_frame_<id>.txt), whether or not strLiveSceneDir is set.
+ * Called on the SfM thread; NULL (the default) disables it.
+ */
+typedef void (*LiveFrameListener)(uint32_t imageID, const char* snapshot);
+SFM_API void SetLiveFrameListener(LiveFrameListener listener);
 /*----------------------------------------------------------------*/
 
 } // namespace SFM

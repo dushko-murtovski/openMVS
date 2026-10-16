@@ -7,6 +7,7 @@
 
 #include "Common.h"
 #include "Util.h"
+#include <atomic>
 #ifdef _MSC_VER
 #include <Shlobj.h>
 #if defined(NTDDI_VERSION) && NTDDI_VERSION >= NTDDI_VISTA
@@ -479,6 +480,34 @@ void Util::Init()
 	cv::setRNGSeed((int)0);
 	#endif
 	#endif
+}
+/*----------------------------------------------------------------*/
+
+
+// Host hooks (see Util.h): set by a process embedding the libraries, read from worker threads.
+static std::atomic<Util::ProgressListener> s_progressListener(NULL);
+static std::atomic<bool> s_bCancelRequested(false);
+
+void Util::SetProgressListener(ProgressListener listener)
+{
+	s_progressListener = listener;
+}
+
+void Util::NotifyProgress(LPCTSTR msg, size_t done, size_t total)
+{
+	const ProgressListener listener(s_progressListener);
+	if (listener != NULL)
+		listener(msg, done, total);
+}
+
+void Util::RequestCancel(bool bCancel)
+{
+	s_bCancelRequested = bCancel;
+}
+
+bool Util::IsCancelRequested()
+{
+	return s_bCancelRequested;
 }
 /*----------------------------------------------------------------*/
 

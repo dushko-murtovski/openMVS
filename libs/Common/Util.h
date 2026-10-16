@@ -830,6 +830,17 @@ public:
 		return strCmdLine;
 	}
 
+	// Host hooks, for embedding the libraries in another process instead of running the apps
+	// (see apps/DynamixMvs); both are inert unless a host sets them:
+	//  - the progress listener receives every Progress update below, besides the console line;
+	//  - a cancel request makes the long-running loops that poll it stop at their next
+	//    checkpoint and return failure (only dense reconstruction polls it so far).
+	typedef void (*ProgressListener)(LPCTSTR msg, size_t done, size_t total);
+	static GENERAL_API void		SetProgressListener(ProgressListener listener);
+	static GENERAL_API void		NotifyProgress(LPCTSTR msg, size_t done, size_t total);
+	static GENERAL_API void		RequestCancel(bool bCancel);
+	static GENERAL_API bool		IsCancelRequested();
+
 	struct Progress {
 		const String msg; // custom message header (ex: "Processed images")
 		const size_t total; // total number of jobs to be processed
@@ -869,12 +880,14 @@ public:
 			const size_t done(processed);
 			const float percentage((float)done/(float)total);
 			const Timer::Type remaining(percentage<0.01f && (done<10 || elapsed<10*1000) ? Timer::Type(0) : elapsed/percentage - elapsed);
+			NotifyProgress(msg, done, total);
 			// display progress
 			print(String::FormatString(_T("%s %u (%.2f%%, %s, ETA %s)..."), msg.c_str(), done, percentage*100.f, formatTime((int64_t)elapsed,1).c_str(), formatTime((int64_t)remaining,2).c_str()));
 		}
 		void close() {
 			// make sure we print the complete progress
 			const Timer::Type elapsed(Timer::SysTime2TimeMs(Timer::GetSysTime()-start));
+			NotifyProgress(msg, total, total);
 			// display progress
 			print(String::FormatString(_T("%s %u (100%%, %s)"), msg.c_str(), total, formatTime((int64_t)elapsed).c_str()));
 			std::cout << _T("\n");
