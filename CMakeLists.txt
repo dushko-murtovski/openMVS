@@ -61,6 +61,9 @@ ENDIF()
 # Add local ports to overlay
 SET(VCPKG_OVERLAY_PORTS "${CMAKE_SOURCE_DIR}/ports")
 
+# Add local triplets to overlay (x64-windows: pins the v143 toolset, links zlib statically)
+SET(VCPKG_OVERLAY_TRIPLETS "${CMAKE_SOURCE_DIR}/triplets")
+
 # Define helper functions and macros (must come before the project() call
 # below: the opencv4 overlay generator declared in Utils.cmake mutates
 # VCPKG_OVERLAY_PORTS, which the vcpkg toolchain consumes during project()).
