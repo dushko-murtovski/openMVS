@@ -76,9 +76,6 @@ Non-linear least-squares optimization with callback-based residual evaluation. U
 
 ## Graph Algorithms
 
-### Max-Flow / Min-Cut (`IBFS/IBFS.h/cpp`)
-Incremental Breadth-First Search (Goldberg et al.) for s-t min-cut problems. Used in graph cut-based mesh segmentation.
-
 ### Loopy Belief Propagation (`LBP.h`)
 Message-passing inference on graphical models for energy minimization over discrete labels. Supports OpenMP parallelization (`LBP_USE_OPENMP`).
 

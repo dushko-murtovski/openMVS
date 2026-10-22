@@ -105,9 +105,9 @@ Key components:
 - **Similarity transform:** 7-DOF Sim(3), Umeyama estimation, rotation alignment
 - **Geodetic transforms:** WGS84 ↔ ECEF ↔ ENU for GPS
 - **Optimization:** ADMM L1 solver, Levenberg-Marquardt (LMFit)
-- **Graph algorithms:** IBFS max-flow/min-cut, Loopy Belief Propagation
+- **Graph algorithms:** Loopy Belief Propagation (mesh max-flow/min-cut uses Boost's Boykov-Kolmogorov, in `libs/MVS/SceneReconstruct.cpp`)
 
-File count: ~10 `.h`/`.cpp` files (plus `IBFS/` and `LMFit/` subdirectories)
+File count: ~10 `.h`/`.cpp` files (plus the `LMFit/` subdirectory)
 
 ### `libs/SFM/` — Structure-from-Motion
 

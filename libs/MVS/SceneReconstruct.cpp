@@ -55,9 +55,10 @@ using namespace MVS;
 // uncomment to enable reconstruction algorithm of weakly supported surfaces
 #define DELAUNAY_WEAKSURF
 
-// uncomment to use IBFS algorithm for max-flow
-// (faster, but not clear license policy)
-#define DELAUNAY_MAXFLOW_IBFS
+// IBFS max-flow is licensed for research purposes only, so this fork uses Boost's
+// Boykov-Kolmogorov max-flow below and no longer carries the IBFS sources (libs/Math/IBFS).
+// Do not re-enable it in builds shipped with DynamixMapper.
+//#define DELAUNAY_MAXFLOW_IBFS
 
 #pragma push_macro("VERBOSE")
 #undef VERBOSE

@@ -746,8 +746,8 @@ OpenMVS is a comprehensive photogrammetry library implementing a complete pipeli
 
 ### Graph Algorithms
 
-- **Files:** `libs/Math/IBFS/IBFS.h/.cpp`, `libs/Math/LBP.h`
-- **Algorithms:** IBFS (Incremental BFS) max-flow/min-cut for mesh graph-cut; Loopy Belief Propagation for energy minimization (texture face selection)
+- **Files:** `libs/MVS/SceneReconstruct.cpp` (max-flow), `libs/Math/LBP.h`
+- **Algorithms:** Boost Boykov-Kolmogorov max-flow/min-cut for mesh graph-cut (IBFS removed: research-only licence); Loopy Belief Propagation for energy minimization (texture face selection)
 
 ---
 

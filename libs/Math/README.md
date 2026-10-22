@@ -139,10 +139,6 @@ This is a self-contained implementation (not Ceres). It's used for simpler optim
 
 ## Graph Algorithms
 
-### Max-Flow / Min-Cut (`IBFS/IBFS.h/cpp`)
-
-Implementation of the Incremental Breadth-First Search algorithm (Goldberg et al.) for computing maximum flow / minimum cut in a graph. Used in graph-cut-based mesh segmentation and labeling problems.
-
 ### Loopy Belief Propagation (`LBP.h`)
 
 Message-passing inference on graphical models. Minimizes energy functions defined over discrete labels with pairwise smoothness terms. Supports OpenMP parallelization.
@@ -163,8 +159,6 @@ libs/Math/
 ├── LBP.h                               # Loopy Belief Propagation
 ├── LMFit/
 │   └── lmmin.h/cpp                      # Levenberg-Marquardt fitting
-├── IBFS/
-│   └── IBFS.h/cpp                       # Max-flow / min-cut
 └── CMakeLists.txt                       # Build config
 ```
 
