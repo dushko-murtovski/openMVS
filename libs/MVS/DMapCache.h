@@ -83,10 +83,11 @@ public:
 	size_t ComputeUsedMemory() const;
 
 private:
-	// eject the least recently used images if the cache size is above max-limit
-	bool Eject() const;
-	// eject the least recently used image
-	bool EjectOldest() const;
+	// eject the least recently used images if the cache size is above max-limit;
+	// idxImageKeep (the image just loaded) is never ejected
+	bool Eject(IIndex idxImageKeep = NO_ID) const;
+	// eject the least recently used image, unless it is idxImageKeep or the skipped image
+	bool EjectOldest(IIndex idxImageKeep = NO_ID) const;
 
 private:
 	unsigned loadFlags;
@@ -95,6 +96,9 @@ private:
 	// maximum and used memory (in bytes)
 	size_t maxMemory, disabledMaxMemory;
 	mutable size_t usedMemory;
+	// the bytes each cached image added to usedMemory, subtracted again when it is ejected:
+	// its current size may differ by then (normal-maps estimated later), which underflowed usedMemory
+	mutable std::unordered_map<IIndex, size_t> accountedMemory;
 
 	// index of the image to skip memory check
 	IIndex skipMemoryCheckIdxImage;

@@ -53,23 +53,40 @@ void DMapCache::SetMaxMemory(size_t max_memory_bytes) {
 
 bool DMapCache::UseImage(IIndex idxImage) const {
 	ASSERT(idxImage < arrDepthData.size());
-	std::lock_guard<std::mutex> guard(mutex);
+	// unique_lock, not lock_guard: the lock is released around the slow Load() below, and if that
+	// throws while unlocked only a lock that tracks ownership skips unlocking a mutex it does not own
+	std::unique_lock<std::mutex> lock(mutex);
 	ASSERT(arrDepthData[idxImage].IsValid());
 	if (!arrDepthData[idxImage].IsEmpty()) {
 		fifo.Put(idxImage);
+		// depth-data loaded outside the cache is accounted the first time it is seen, so
+		// that ejecting it later subtracts what was added
+		if (accountedMemory.find(idxImage) == accountedMemory.end()) {
+			usedMemory += (accountedMemory[idxImage] = arrDepthData[idxImage].GetMemorySize());
+			Eject(idxImage);
+		}
 		return false;
 	}
-	mutex.unlock();
+	lock.unlock();
 	const String fileName(ComposeDepthFilePath(arrDepthData[idxImage].GetView().GetID(), "dmap"));
 	while (!std::filesystem::is_regular_file(static_cast<const std::string&>(fileName)))
 		std::this_thread::sleep_for(std::chrono::milliseconds(100));
-	arrDepthData[idxImage].Load(fileName, loadFlags);
-	ASSERT(!arrDepthData[idxImage].IsEmpty());
-	mutex.lock();
+	if (!arrDepthData[idxImage].Load(fileName, loadFlags)) {
+		// corrupt or truncated file: leave the map empty and uncached; callers test IsEmpty().
+		// A warning, not "error:": the fusion carries on without it, and DynamixMapper stops a
+		// run on any line starting with "error:"
+		arrDepthData[idxImage].Release();
+		DEBUG("warning: depth-map '%s' could not be loaded; it is left out of the fusion", fileName.c_str());
+		return false;
+	}
+	lock.lock();
 	++numImageRead;
-	usedMemory += arrDepthData[idxImage].GetMemorySize();
+	usedMemory += (accountedMemory[idxImage] = arrDepthData[idxImage].GetMemorySize());
 	fifo.Put(idxImage);
-	Eject();
+	// never eject the image just loaded: with a limit below one depth-map (free memory just above
+	// the safety margin) its own Eject() released it again, and the fusion read an empty map
+	Eject(idxImage);
+	ASSERT(!arrDepthData[idxImage].IsEmpty());
 	return true;
 }
 
@@ -105,22 +122,28 @@ size_t DMapCache::ComputeUsedMemory() const {
 	return computedUsedMemory;
 }
 
-bool DMapCache::Eject() const {
+bool DMapCache::Eject(IIndex idxImageKeep) const {
 	if (maxMemory == 0)
 		return true;
 	while (usedMemory > maxMemory) {
-		if (!EjectOldest())
+		if (!EjectOldest(idxImageKeep))
 			return false;
 	}
 	return true;
 }
 
-bool DMapCache::EjectOldest() const {
-	ASSERT(!fifo.IsEmpty());
-	if (fifo.Back() == skipMemoryCheckIdxImage)
+bool DMapCache::EjectOldest(IIndex idxImageKeep) const {
+	if (fifo.IsEmpty())
+		return false;
+	if (fifo.Back() == skipMemoryCheckIdxImage || fifo.Back() == idxImageKeep)
 		return false;
 	const IIndex idxImage = fifo.Pop();
-	usedMemory -= arrDepthData[idxImage].GetMemorySize();
+	// subtract the bytes accounted when it entered the cache, not its current size
+	const auto itAccounted(accountedMemory.find(idxImage));
+	if (itAccounted != accountedMemory.end()) {
+		usedMemory -= MINF(itAccounted->second, usedMemory);
+		accountedMemory.erase(itAccounted);
+	}
 	// release the depth-data; no need to save the depth-data to disk as it is already saved
 	arrDepthData[idxImage].Release();
 	return true;

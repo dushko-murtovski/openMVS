@@ -1327,10 +1327,17 @@ size_t GetAvailableMemory(const DepthDataArr& arrDepthData, const BoolArr& fused
 	const size_t freeMemory(currentCacheMemory + memInfo.freePhysical);
 	const size_t safetyMemory(MAXF(ROUND2INT<size_t>(memInfo.totalPhysical * 0.08), size_t(1*1024*1024*1024ull)/*1GB*/));
 	const size_t neededMemory(neededPointCloudMemory + safetyMemory);
-	const size_t minDMapsMemory(resolution / numDMaps * 8/*min dmaps in memory*/ * (1/*depth*/ + 3/*normal*/ + 1/*confidence*/) * 4/*bytes*/);
-	if (freeMemory < neededMemory) {
-		DEBUG("warning: not enough memory to cache depth-maps (%luMB needed, %luMB available)", neededMemory/1024/1024, freeMemory/1024/1024);
-		return MINF(currentCacheMemory, minDMapsMemory);
+	// the working set: the depth-map being fused and the neighbors fused with it. The cache is never
+	// given less, whatever is free: the fusion needs them in memory at once anyway, and a smaller
+	// limit only makes the cache drop and re-read them. It used to get MINF(currentCacheMemory, 8 maps)
+	// when memory was short - 0, read as "unlimited", on the first call - and free minus needed when
+	// just enough was free, which could be a few MB, less than a single depth-map.
+	const size_t workingSetMemory(MAXF(resolution / numDMaps * (MINF(OPTDENSE::nMaxViewsFuse, (unsigned)arrDepthData.size()) + 1) *
+		(1/*depth*/ + 3/*normal*/ + 1/*confidence*/) * 4/*bytes*/, size_t(1)));
+	if (freeMemory < neededMemory + workingSetMemory) {
+		DEBUG("warning: not enough memory to cache depth-maps (%luMB needed, %luMB available); only the depth-maps being fused are kept",
+			(neededMemory + workingSetMemory)/1024/1024, freeMemory/1024/1024);
+		return workingSetMemory;
 	}
 	return freeMemory - neededMemory;
 } // GetAvailableMemory
@@ -1429,10 +1436,13 @@ void DepthMapsData::FuseDepthMaps(PointCloud& pointcloud, bool bEstimateColor, b
 		totalNumImagesInCache += numImagesInCache;
 		// fuse depth-map
 		cacheDMaps.UseImage(idxImage);
-		cacheDMaps.SkipMemoryCheckIdxImage(idxImage);
 		const DepthData& depthData(arrDepthData[idxImage]);
 		ASSERT(depthData.GetView().GetLocalID(scene.images) == idxImage);
-		ASSERT(!depthData.IsEmpty());
+		if (depthData.IsEmpty()) {
+			fusedDMaps[idxImage] = true; // unreadable depth-map file (logged by the cache): nothing to fuse
+			continue;
+		}
+		cacheDMaps.SkipMemoryCheckIdxImage(idxImage);
 		if (bEstimateNormal && depthData.normalMap.empty())
 			EstimateNormalMaps();
 		ASSERT(!depthData.images.empty() && !depthData.neighbors.empty());
@@ -1764,10 +1774,13 @@ void DepthMapsData::DenseFuseDepthMaps(PointCloud& pointcloud, bool bEstimateCol
 		++numDMapsFused;
 		// fuse depth-map
 		cacheDMaps.UseImage(idxImage);
-		cacheDMaps.SkipMemoryCheckIdxImage(idxImage);
 		const DepthData& depthData(arrDepthData[idxImage]);
 		ASSERT(depthData.GetView().GetLocalID(scene.images) == idxImage);
-		ASSERT(!depthData.IsEmpty());
+		if (depthData.IsEmpty()) {
+			fusedDMaps[idxImage] = true; // unreadable depth-map file (logged by the cache): nothing to fuse
+			continue;
+		}
+		cacheDMaps.SkipMemoryCheckIdxImage(idxImage);
 		if (bEstimateNormal && depthData.normalMap.empty())
 			EstimateNormalMaps();
 		// make sure all neighbors are cached
