@@ -978,7 +978,7 @@ void PairsMatcher::PreMatch(PairIdxArr& pairsToMatch)
 		pairsToMatch.size(), vocabularyTree->GetMaxDescriptors(), config.preMatchThreshold);
 
 	// Pre-match pairs
-	cv::setNumThreads(1); // temporary turn off multi-threading for OpenCV functions
+	cv::setNumThreads(scene.nMaxThreads); // not 1: FLANN's heap pool needs it, see Match()
 	size_t numVerifiedStored = 0;
 	std::atomic<size_t> atomicNumRemoved{0};
 	std::mutex pairsMutex;
@@ -1115,7 +1115,12 @@ unsigned PairsMatcher::Match()
 		existingPairMap[PairIdx(p.ID1, p.ID2).idx] = i;
 	}
 	// Match all collected pairs in parallel
-	cv::setNumThreads(1); // temporary turn off multi-threading for OpenCV functions
+	// Keep OpenCV's thread count at the pool size here, not 1: FLANN's k-d tree search
+	// (opencv2/flann/heap.h, Heap::getPooledInstance) keeps one scratch heap per thread under
+	// a global lock and frees every heap not used in the last 2*cv::getNumThreads() searches.
+	// With 1 that is 2, so each search of each pool thread reallocated its heap inside the
+	// lock and matching used about 4 of 24 cores. The searches themselves run single-threaded.
+	cv::setNumThreads(scene.nMaxThreads);
 	Util::Progress progress(_T("Match image pairs"), pairsToMatch.size());
 	GET_LOGCONSOLE().Pause();
 	unsigned newPairs = 0, updatedPairs = 0;
