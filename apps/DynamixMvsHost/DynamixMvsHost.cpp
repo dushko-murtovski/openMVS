@@ -36,6 +36,7 @@ using namespace MVS;
 // the hosted apps' entry points: their main(), renamed at compile time
 int DensifyPointCloud_main(int argc, LPCTSTR* argv);
 int CreateStructure_main(int argc, LPCTSTR* argv);
+int TransformScene_main(int argc, LPCTSTR* argv);
 int ReconstructMesh_main(int argc, LPCTSTR* argv);
 int RefineMesh_main(int argc, LPCTSTR* argv);
 int TextureMesh_main(int argc, LPCTSTR* argv);
@@ -48,6 +49,7 @@ struct HostedApp { const char* name; AppMain main; };
 const HostedApp g_apps[] = {
 	{ "DensifyPointCloud", &DensifyPointCloud_main },
 	{ "CreateStructure",   &CreateStructure_main },
+	{ "TransformScene",    &TransformScene_main },
 	{ "ReconstructMesh",   &ReconstructMesh_main },
 	{ "RefineMesh",        &RefineMesh_main },
 	{ "TextureMesh",       &TextureMesh_main },

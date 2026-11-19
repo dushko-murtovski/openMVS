@@ -1,7 +1,7 @@
 # Worker process for DynamixMapper (see DynamixMvsHost.cpp): the hosted apps' own sources are
 # compiled in unchanged, with main() renamed so the host can call each one. The rename is a
 # source property of this directory only, so the apps' own targets are not affected.
-set(HOSTED_APPS DensifyPointCloud CreateStructure ReconstructMesh RefineMesh TextureMesh)
+set(HOSTED_APPS DensifyPointCloud CreateStructure TransformScene ReconstructMesh RefineMesh TextureMesh)
 set(HOSTED_APP_SOURCES "")
 foreach(app ${HOSTED_APPS})
 	set(appSource "${CMAKE_CURRENT_SOURCE_DIR}/../${app}/${app}.cpp")
